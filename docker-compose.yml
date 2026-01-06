@@ -1,0 +1,32 @@
+services:
+  neo4j:
+    image: neo4j:5
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/neo4jpassword
+      - NEO4J_server_memory_pagecache_size=1G
+      - NEO4J_server_memory_heap_initial__size=1G
+      - NEO4J_server_memory_heap_max__size=1G
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+
+  postgres:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=aoro
+      - POSTGRES_PASSWORD=aoro
+      - POSTGRES_DB=aoro
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  pg_data:
+
+

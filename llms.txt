@@ -1,0 +1,38 @@
+# AORO (Autonomous Outcome-Based Revenue Orchestrator)
+
+This repo contains a stateful multi-agent system for compliance-driven industrial services (Commercial Fire Safety), built to discover trigger events, generate technical outreach, gate approvals (HITL), and integrate with ServiceTitan via MCP.
+
+## Start here (high signal)
+
+- Master plan: `docs/plan/aoro_mvp_master_plan.md`
+- AI documentation hub: `docs/ai/README.md`
+- Changelog: `docs/ai/CHANGELOG.md`
+- Worklog: `docs/ai/WORKLOG.md`
+- ADRs: `docs/ai/adr/README.md`
+- MVP architecture ADR: `docs/ai/adr/0001-mvp-scope-and-architecture.md`
+
+## Core code entrypoints
+
+- FastAPI app: `src/api/main.py`
+- LangGraph workflow: `src/agents/orchestrator.py`
+- Agents:
+  - Research: `src/agents/nodes/researcher.py`
+  - Outreach: `src/agents/nodes/communicator.py`
+  - Objections: `src/agents/nodes/closer.py`
+  - HITL gate: `src/agents/nodes/human_review.py`
+- MCP server: `src/integrations/mcp/server.py`
+- ServiceTitan client: `src/integrations/servicetitan/client.py`
+
+## Knowledge layer
+
+- Neo4j graph: `src/knowledge/graph/fire_code_graph.py`
+- Pinecone vectors: `src/knowledge/vectors/pinecone_client.py`
+- Embeddings: `src/knowledge/vectors/embeddings.py`
+
+## Signal engine
+
+- Scraper framework: `src/signal_engine/scrapers/base_scraper.py`
+- Playwright permit scraper: `src/signal_engine/scrapers/permit_scraper.py`
+- Enrichment: `src/signal_engine/enrichment/company_enricher.py`
+
+
