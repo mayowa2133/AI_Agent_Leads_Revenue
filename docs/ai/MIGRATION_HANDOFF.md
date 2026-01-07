@@ -39,7 +39,7 @@
 ### API Keys Status
 
 - **Hunter.io:** ✅ Configured
-  - API Key: `97aee0aab779fa7aa7ac8cd37849410929db6b54`
+  - API Key: Configured in `.env` (see HUNTER_API_KEY)
   - Credits: 49 remaining (1 used in test)
   - Free tier: 50 credits/month
 
@@ -52,7 +52,7 @@
 
 Current `.env` settings:
 ```env
-HUNTER_API_KEY=97aee0aab779fa7aa7ac8cd37849410929db6b54
+HUNTER_API_KEY=your_hunter_key_here  # Set your actual key in .env (not committed)
 # APOLLO_API_KEY=your_apollo_key_here  # Add when ready
 ENRICHMENT_DRY_RUN=false
 MAX_CREDITS_PER_RUN=3          # Hunter credits

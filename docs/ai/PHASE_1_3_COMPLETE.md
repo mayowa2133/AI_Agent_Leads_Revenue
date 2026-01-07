@@ -108,7 +108,7 @@
 
 ```env
 # Hunter.io (Free Tier: 50 credits/month)
-HUNTER_API_KEY=97aee0aab779fa7aa7ac8cd37849410929db6b54
+HUNTER_API_KEY=your_hunter_key_here  # Set your actual key in .env (not committed)
 
 # Apollo (Free Tier: 110 credits/month)
 # APOLLO_API_KEY=your_apollo_key_here  # Add when ready

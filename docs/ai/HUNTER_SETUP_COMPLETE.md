@@ -3,7 +3,7 @@
 ## Status
 
 ✅ **Real API key configured and verified**
-- API key: `97aee0aab7...6b54` (configured in `.env`)
+- API key: Configured in `.env` (see HUNTER_API_KEY)
 - API connection: ✅ Working
 - Test call: ✅ Successful (no credit charged - no email found)
 
@@ -12,7 +12,7 @@
 Your system is configured with multiple safety layers:
 
 ```env
-HUNTER_API_KEY=97aee0aab779fa7aa7ac8cd37849410929db6b54
+HUNTER_API_KEY=your_hunter_key_here  # Set your actual key in .env (not committed)
 ENRICHMENT_DRY_RUN=true          # Still in dry-run mode (safe)
 MAX_CREDITS_PER_RUN=3            # Hard limit enforced
 ENRICHMENT_PROVIDER_PRIORITY=auto # Hunter first, Apollo fallback
