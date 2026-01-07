@@ -6,20 +6,30 @@ A stateful multi-agent system that discovers high-intent compliance triggers (pe
 
 AORO is an AI-powered revenue orchestration platform designed for compliance-driven industrial services, with an initial focus on **Commercial Fire Safety**. The system autonomously:
 
-- **Discovers** high-intent leads through permit scraping and regulatory monitoring
-- **Enriches** lead data with company information and decision-maker identification
-- **Researches** applicable fire codes and compliance requirements
-- **Generates** technical, compliance-focused outreach messages
-- **Handles** objections with regulatory context and case studies
-- **Books** qualified appointments directly into ServiceTitan CRM
+- **Discovers** high-intent leads through permit scraping and regulatory monitoring ✅ **Phase 1 Complete**
+- **Enriches** lead data with company information and decision-maker identification ✅ **Phase 1 Complete**
+- **Researches** applicable fire codes and compliance requirements (Phase 2)
+- **Generates** technical, compliance-focused outreach messages (Phase 2)
+- **Handles** objections with regulatory context and case studies (Phase 2)
+- **Books** qualified appointments directly into ServiceTitan CRM (Phase 3)
 
 ## ✨ Features
 
-### Signal Engine (Lead Discovery)
+### Signal Engine (Lead Discovery) ✅ **Phase 1 Complete**
 - **Permit Scrapers**: Playwright-based scrapers for municipal permit portals
+  - Mecklenburg County (Charlotte, NC) scraper ✅
+  - San Antonio Fire Module scraper ✅
+  - Scheduled job runner with APScheduler ✅
 - **Regulatory Listeners**: Monitor code updates and regulatory changes
-- **Data Enrichment**: Apollo/Clearbit integration for company and decision-maker data
-- **Qualification Scoring**: Automated lead scoring based on permit status and type
+  - EPA/Federal Register listener ✅
+  - NFPA code amendment listener ✅
+  - State Fire Marshal RSS feed listener ✅
+- **Data Enrichment**: Hybrid Apollo + Hunter.io integration for company and decision-maker data
+  - Geocoding service (Nominatim) ✅
+  - Apollo domain lookup (free tier) ✅
+  - Hunter.io email finder ✅
+  - Credit safety mechanisms ✅
+- **Regulatory Matching**: Correlate permits with regulatory updates ✅
 
 ### Multi-Agent Workflow (LangGraph)
 - **Researcher Agent**: Identifies applicable fire codes, compliance gaps, and relevant case studies
@@ -138,10 +148,25 @@ AI_Agent_Leads_Revenue/
 │       └── audit_log.py      # Audit logging
 │
 ├── scripts/
-│   ├── run_scraper_fixture.py    # Test scraper with local fixture
-│   ├── run_scraper_job.py         # Run scraper job
-│   ├── seed_knowledge_graph.py    # Seed Neo4j with fire codes
-│   └── docs_gate.py               # Documentation gate check
+│   ├── phase1_1/                 # Phase 1.1: Permit Scraping Tests
+│   │   ├── test_phase1_1_complete.py
+│   │   ├── test_mecklenburg.py
+│   │   └── test_san_antonio.py
+│   ├── phase1_2/                 # Phase 1.2: Regulatory Listener Tests
+│   │   ├── test_regulatory_listeners.py
+│   │   └── verify_regulatory_setup.py
+│   ├── phase1_3/                 # Phase 1.3: Enrichment Pipeline Tests
+│   │   ├── test_enrichment_pipeline.py
+│   │   ├── test_hybrid_enrichment.py
+│   │   └── test_hunter_integration.py
+│   ├── e2e/                      # End-to-End Tests
+│   │   ├── test_complete_phase1_flow.py
+│   │   └── test_e2e_simplified.py
+│   ├── utils/                    # Production Utility Scripts
+│   │   ├── run_scheduled_scrapers.py
+│   │   ├── run_scraper_job.py
+│   │   └── seed_knowledge_graph.py
+│   └── debug/                    # Debug Scripts
 │
 ├── tests/
 │   ├── unit/                # Unit tests
@@ -238,28 +263,43 @@ poetry run uvicorn src.api.main:app --reload --port 8000
 
 The API will be available at `http://localhost:8000` with interactive docs at `http://localhost:8000/docs`.
 
-### Test Permit Scraper (Local, No Internet)
+### Test Phase 1 Components
 
-This uses a local HTML fixture to validate the scraper:
-
+**Phase 1.1 - Permit Scraping:**
 ```bash
-poetry run python scripts/run_scraper_fixture.py
+poetry run python scripts/phase1_1/test_phase1_1_complete.py
 ```
 
-### Seed Knowledge Graph
-
-Populate Neo4j with fire code data:
-
+**Phase 1.2 - Regulatory Listeners:**
 ```bash
-poetry run python scripts/seed_knowledge_graph.py
+poetry run python scripts/phase1_2/test_regulatory_listeners.py
 ```
 
-### Run Scraper Job
-
-Execute a scraper job:
-
+**Phase 1.3 - Enrichment Pipeline:**
 ```bash
-poetry run python scripts/run_scraper_job.py
+poetry run python scripts/phase1_3/test_enrichment_pipeline.py
+```
+
+**End-to-End Test (Phase 1.1 → 1.2 → 1.3):**
+```bash
+poetry run python scripts/e2e/test_complete_phase1_flow.py
+```
+
+### Run Production Scripts
+
+**Scheduled Scrapers:**
+```bash
+poetry run python scripts/utils/run_scheduled_scrapers.py
+```
+
+**Single Scraper Job:**
+```bash
+poetry run python scripts/utils/run_scraper_job.py
+```
+
+**Seed Knowledge Graph:**
+```bash
+poetry run python scripts/utils/seed_knowledge_graph.py
 ```
 
 ## 📡 API Endpoints
@@ -341,15 +381,18 @@ python -m compileall -q src tests
 
 Check documentation changes:
 ```bash
-python scripts/docs_gate.py --show-changes
+python scripts/utils/docs_gate.py --show-changes
 ```
 
 ## 📚 Documentation
 
 - **Master Plan**: [`docs/plan/aoro_mvp_master_plan.md`](docs/plan/aoro_mvp_master_plan.md)
 - **AI Engineering Hub**: [`docs/ai/README.md`](docs/ai/README.md)
+- **Status**: [`docs/ai/STATUS.md`](docs/ai/STATUS.md) - Current project status
 - **Changelog**: [`docs/ai/CHANGELOG.md`](docs/ai/CHANGELOG.md)
 - **Work Log**: [`docs/ai/WORKLOG.md`](docs/ai/WORKLOG.md)
+- **Phase 1.3 Completion**: [`docs/ai/PHASE_1_3_COMPLETE.md`](docs/ai/PHASE_1_3_COMPLETE.md)
+- **Hybrid Enrichment Strategy**: [`docs/ai/HYBRID_ENRICHMENT_STRATEGY.md`](docs/ai/HYBRID_ENRICHMENT_STRATEGY.md)
 - **Architecture Decision Records**: [`docs/ai/adr/`](docs/ai/adr/)
 - **Multi-Agent Responsibilities**: [`docs/ai/multi_agent_responsibilities.md`](docs/ai/multi_agent_responsibilities.md)
 
@@ -387,8 +430,35 @@ Built with:
 - [Pinecone](https://www.pinecone.io/) - Vector database
 - [Playwright](https://playwright.dev/) - Web automation
 
+## ✅ Phase 1 Status: Complete
+
+**Phase 1.1: Permit Scraping** ✅
+- Mecklenburg County scraper (510+ permits extracted)
+- San Antonio Fire Module scraper (11+ permits extracted)
+- Scheduled job runner with APScheduler
+- Applicant/contractor extraction
+
+**Phase 1.2: Regulatory Listeners** ✅
+- EPA/Federal Register listener (3+ updates)
+- NFPA code amendment listener
+- State Fire Marshal RSS feed listener (12+ updates)
+- Regulatory update storage and matching
+
+**Phase 1.3: Data Enrichment Pipeline** ✅
+- Geocoding service (Nominatim)
+- Company matching with Apollo domain lookup
+- Hunter.io email finder integration
+- Hybrid Apollo + Hunter.io workflow
+- Credit safety mechanisms
+- Lead storage and persistence
+
+**Complete Flow Verified** ✅
+- Phase 1.1 → Phase 1.3: Working
+- Phase 1.2 → Phase 1.3: Working
+- Phase 1.1 → Phase 1.2 → Phase 1.3: Complete flow verified
+
 ---
 
-**Status**: MVP - Active Development
+**Status**: Phase 1 Complete - Ready for Phase 2 (Multi-Agent Workflow)
 
 For questions or issues, please open an issue on GitHub.

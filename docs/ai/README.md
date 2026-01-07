@@ -3,6 +3,7 @@
 This folder is the project’s “audit trail” for how the system evolves.
 
 ### Where to look
+- **Status**: `docs/ai/STATUS.md` (current implementation status and handoff notes)
 - **Plan**: `docs/plan/aoro_mvp_master_plan.md`
 - **Changelog**: `docs/ai/CHANGELOG.md` (high-level human-readable changes)
 - **Worklog**: `docs/ai/WORKLOG.md` (chronological engineering notes)

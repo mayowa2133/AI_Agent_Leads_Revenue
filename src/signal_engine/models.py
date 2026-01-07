@@ -55,3 +55,25 @@ class EnrichedLead(BaseModel):
     outreach_channel_hint: Literal["email", "whatsapp", "voice"] = "email"
 
 
+class RegulatoryUpdate(BaseModel):
+    """Regulatory update from state fire marshals, NFPA, or EPA sources."""
+
+    update_id: str = Field(..., description="Unique identifier (hash of content + source)")
+    source: str = Field(..., description="Source type: 'state_fire_marshal', 'nfpa', 'epa'")
+    source_name: str = Field(..., description="Human-readable source name")
+    title: str
+    content: str = Field(..., description="Full text or summary of the update")
+    published_date: datetime
+    effective_date: datetime | None = None
+    url: str
+    jurisdiction: str | None = Field(None, description="State, federal, etc.")
+    applicable_codes: list[str] = Field(default_factory=list, description="NFPA codes, EPA regulations")
+    compliance_triggers: list[str] = Field(
+        default_factory=list, description="Extracted compliance triggers"
+    )
+    building_types_affected: list[str] = Field(
+        default_factory=list, description="Building types impacted by this update"
+    )
+    last_seen_at: datetime = Field(default_factory=datetime.utcnow)
+
+

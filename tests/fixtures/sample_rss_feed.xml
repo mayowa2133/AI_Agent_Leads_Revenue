@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+    <channel>
+        <title>State Fire Marshal Bulletins</title>
+        <link>https://example.com/fire-marshal</link>
+        <description>Fire safety bulletins and updates</description>
+        <language>en-us</language>
+        <lastBuildDate>Mon, 06 Jan 2026 12:00:00 GMT</lastBuildDate>
+        
+        <item>
+            <title>NFPA 72 2022 Edition - New Fire Alarm Requirements</title>
+            <link>https://example.com/bulletin/2026-001</link>
+            <description>
+                <![CDATA[
+                The State Fire Marshal announces new requirements for fire alarm systems 
+                based on NFPA 72 2022 edition. All commercial buildings must comply by 
+                January 1, 2027. This affects hospitals, data centers, and high-rise buildings.
+                ]]>
+            </description>
+            <pubDate>Mon, 06 Jan 2026 10:00:00 GMT</pubDate>
+            <guid>https://example.com/bulletin/2026-001</guid>
+        </item>
+        
+        <item>
+            <title>Fire Sprinkler System Inspection Requirements Updated</title>
+            <link>https://example.com/bulletin/2026-002</link>
+            <description>
+                <![CDATA[
+                Updated inspection requirements for fire sprinkler systems in commercial 
+                buildings. Quarterly inspections are now mandatory for all systems.
+                ]]>
+            </description>
+            <pubDate>Fri, 03 Jan 2026 14:30:00 GMT</pubDate>
+            <guid>https://example.com/bulletin/2026-002</guid>
+        </item>
+        
+        <item>
+            <title>Emergency Evacuation Plan Compliance Deadline</title>
+            <link>https://example.com/bulletin/2026-003</link>
+            <description>
+                <![CDATA[
+                All commercial buildings must submit updated emergency evacuation plans 
+                by March 1, 2026. This applies to buildings over 50,000 square feet.
+                ]]>
+            </description>
+            <pubDate>Wed, 01 Jan 2026 09:15:00 GMT</pubDate>
+            <guid>https://example.com/bulletin/2026-003</guid>
+        </item>
+    </channel>
+</rss>
+
