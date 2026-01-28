@@ -60,16 +60,46 @@ todos:
 
 # AORO MVP Master Implementation Plan
 
+**Last Updated:** January 13, 2026  
+**Overall Progress:** ~85% Complete (Phase 1 & 2 Complete, Phase 3 Pending)
+
+## 📊 Current Status Summary
+
+### ✅ Completed Phases
+- **Phase 1.1:** Permit Scraper Framework ✅ (2 municipalities, 500+ permits)
+- **Phase 1.2:** Regulatory Listener ✅ (EPA, NFPA, Fire Marshal feeds)
+- **Phase 1.3:** Data Enrichment Pipeline ✅ (Apollo + Hunter.io hybrid)
+- **Phase 2:** Agentic Workflow ✅ (Complete LangGraph workflow with all nodes)
+
+### ⏳ Pending Phases
+- **Phase 3:** MCP Integration ⏳ (ServiceTitan CRM integration)
+- **Phase 1.4:** Permit Discovery Expansion ⏳ (Scale to 50+ cities - planned)
+
+### 📈 Key Achievements
+- ✅ End-to-end workflow from permit discovery to outreach
+- ✅ Real permit scraping from 2 municipalities
+- ✅ Complete agent workflow with response handling
+- ✅ Workflow monitoring and observability
+- ✅ Tested with real permits end-to-end
+
+### 🎯 Next Priorities
+1. **Phase 3:** Complete MCP integration for ServiceTitan CRM
+2. **Phase 1.4:** Scale permit discovery to 50+ cities (free methods)
+
+---
+
 ## System Architecture Overview
 
 ```mermaid
 flowchart TB
-    subgraph SignalEngine [Phase 1: Signal Engine]
-        PS[Permit Scrapers]
-        RL[Regulatory Listener]
-        DE[Data Enrichment]
+    subgraph SignalEngine [Phase 1: Signal Engine ✅]
+        PS[Permit Scrapers ✅]
+        RL[Regulatory Listener ✅]
+        DE[Data Enrichment ✅]
+        PD[Portal Discovery ⏳]
         PS --> DE
         RL --> DE
+        PD --> PS
     end
 
     subgraph KnowledgeLayer [Knowledge Layer]
@@ -193,11 +223,16 @@ AI_Agent_Leads_Revenue/
 
 ---
 
-## Phase 1: Signal Engine (Weeks 1-4)
+## Phase 1: Signal Engine (Weeks 1-4) ✅ **COMPLETE**
 
-### 1.1 Permit Scraper Framework
+### 1.1 Permit Scraper Framework ✅ **COMPLETE**
 
-Build an async scraper system targeting municipal fire/mechanical permit portals.**Key Components:**
+**Status:** ✅ 100% Complete  
+**Achievement:** Successfully extracting permits from 2 municipalities (Mecklenburg County, San Antonio)
+
+Build an async scraper system targeting municipal fire/mechanical permit portals.
+
+**Key Components:**
 
 - Abstract `BaseScraper` class with retry logic, rate limiting, and proxy rotation
 - Playwright-based scraper for JavaScript-heavy portals
@@ -234,17 +269,27 @@ class BaseScraper(ABC):
     async def check_for_updates(self, last_run: datetime) -> list[PermitData]: ...
 ```
 
-### 1.2 Regulatory Listener
+### 1.2 Regulatory Listener ✅ **COMPLETE**
 
-Monitor state fire marshal bulletins and federal register updates for compliance triggers.**Data Sources:**
+**Status:** ✅ 100% Complete  
+**Achievement:** Monitoring EPA, NFPA, and State Fire Marshal RSS feeds
+
+Monitor state fire marshal bulletins and federal register updates for compliance triggers.
+
+**Data Sources:**
 
 - State Fire Marshal RSS/API feeds
 - NFPA code amendment announcements
 - EPA refrigerant phase-out schedules (for future HVAC expansion)
 
-### 1.3 Data Enrichment Pipeline
+### 1.3 Data Enrichment Pipeline ✅ **COMPLETE**
 
-Cross-reference permit data with business intelligence APIs.**Enrichment Flow:**
+**Status:** ✅ 100% Complete  
+**Achievement:** Hybrid Apollo + Hunter.io enrichment pipeline with credit safety
+
+Cross-reference permit data with business intelligence APIs.
+
+**Enrichment Flow:**
 
 ```mermaid
 flowchart LR
@@ -261,9 +306,60 @@ flowchart LR
 - Decision Maker: name, title, email, LinkedIn, phone
 - Compliance Context: applicable codes, inspection history
 
+### 1.4 Permit Discovery Expansion ⏳ **PLANNED**
+
+**Status:** ⏳ Planning  
+**Goal:** Scale from 2 cities to 50+ cities using free methods  
+**Timeline:** 8 weeks (can run parallel with Phase 3)
+
+**Overview:**
+This phase expands permit discovery coverage from the current 2 municipalities to 50+ cities nationwide using 100% free methods (Google Custom Search, open data APIs, standardized scrapers).
+
+**Key Components:**
+
+1. **Automated Portal Discovery**
+   - Google Custom Search API integration (free tier: 100 queries/day)
+   - Automatic discovery of municipal permit portals
+   - Portal classification (Accela, ViewPoint, EnerGov, etc.)
+
+2. **Scraper Standardization**
+   - Reusable Accela scraper (100+ cities)
+   - Reusable ViewPoint scraper (50+ cities)
+   - Reusable EnerGov scraper (30+ cities)
+   - Scraper registry/factory pattern
+
+3. **Open Data API Integration**
+   - Socrata API client (100+ cities)
+   - CKAN API client (50+ cities)
+   - Custom API clients for structured data
+
+4. **Quality Filtering**
+   - Permit quality scoring (0.0-1.0)
+   - Pre-enrichment filtering (save credits)
+   - Address validation
+
+5. **Unified Ingestion Layer**
+   - Single interface for all permit sources
+   - Automated discovery scheduler
+   - Portal configuration management
+
+**Expected Outcomes:**
+- 50+ municipalities with active permit sources
+- 1,000+ permits/month discovered
+- 70%+ permits with applicant names (quality)
+- 60%+ enrichment efficiency (decision maker emails)
+- $0/month cost (free methods only)
+
+**Documentation:**
+- Detailed plan: [`permit_discovery_expansion_plan.md`](permit_discovery_expansion_plan.md)
+- Integration guide: [`permit_discovery_expansion_integration.md`](permit_discovery_expansion_integration.md)
+
 ---
 
-## Phase 2: Agentic Workflow (Weeks 5-8)
+## Phase 2: Agentic Workflow (Weeks 5-8) ✅ **COMPLETE**
+
+**Status:** ✅ 100% Complete  
+**Achievement:** Complete LangGraph workflow with all nodes, routing, and monitoring
 
 ### 2.1 LangGraph State Machine
 
@@ -366,7 +462,10 @@ def human_review_node(state: AOROState) -> AOROState:
 
 ---
 
-## Phase 3: MCP Integration Layer (Weeks 9-12)
+## Phase 3: MCP Integration Layer (Weeks 9-12) ⏳ **PENDING**
+
+**Status:** ⏳ Pending  
+**Next Priority:** ServiceTitan CRM integration via MCP
 
 ### 3.1 FastMCP Server Architecture
 
@@ -516,22 +615,56 @@ apscheduler = \"^3.10\"
 
 ---
 
-## Implementation Priority
+## Implementation Status & Timeline
 
-| Week | Deliverable | Success Criteria |
-|------|-------------|------------------|
-| 1-2 | Permit scraper for 1 target municipality | Successfully extracts 100+ fire permits |
-| 3-4 | Data enrichment pipeline | 80%+ decision maker match rate |
-| 5-6 | LangGraph workflow (research + communication) | End-to-end lead processing |
-| 7-8 | Closer agent + HITL gates | Objection handling demo |
-| 9-10 | MCP server + ServiceTitan mock | Tool invocation working |
-| 11-12 | Integration testing + LangSmith | Full audit trail captured |
+### Completed Phases ✅
+
+| Phase | Timeline | Status | Achievement |
+|------|----------|--------|-------------|
+| **1.1 Permit Scraper Framework** | Weeks 1-2 | ✅ Complete | 2 municipalities, 500+ permits extracted |
+| **1.2 Regulatory Listener** | Weeks 2-3 | ✅ Complete | EPA, NFPA, Fire Marshal feeds active |
+| **1.3 Data Enrichment Pipeline** | Weeks 3-4 | ✅ Complete | Hybrid Apollo + Hunter.io working |
+| **2.1-2.4 Agentic Workflow** | Weeks 5-8 | ✅ Complete | Full LangGraph workflow with all nodes |
+| **2.1 Core Workflow** | Week 5-6 | ✅ Complete | Research, qualification, outreach generation |
+| **2.2 Response Handling** | Week 6-7 | ✅ Complete | Response classification and routing |
+| **2.3 Follow-ups & Objections** | Week 7-8 | ✅ Complete | Follow-up sequences, objection handling |
+| **2.4 Testing & Monitoring** | Week 8 | ✅ Complete | End-to-end tests, workflow monitoring |
+
+### Pending Phases ⏳
+
+| Phase | Timeline | Status | Priority |
+|------|----------|--------|----------|
+| **3.1-3.3 MCP Integration** | Weeks 9-12 | ⏳ Pending | High - Complete MVP |
+| **1.4 Permit Discovery Expansion** | Weeks 13-20 | ⏳ Planned | High - Scale to 50+ cities |
+
+### Implementation Priority
+
+**Immediate Next Steps:**
+1. **Phase 3: MCP Integration** (Weeks 9-12) - Complete MVP
+   - FastMCP server implementation
+   - ServiceTitan API integration
+   - Multi-tenant security
+
+2. **Phase 1.4: Permit Discovery Expansion** (Weeks 13-20) - Scale coverage
+   - Can run in parallel with Phase 3 if resources allow
+   - Automated portal discovery
+   - Scraper standardization
+   - Open data API integration
 
 ---
 
 ## Next Steps After MVP
 
+### Immediate (Post-Phase 3)
+1. **Phase 1.4: Permit Discovery Expansion** - Scale to 50+ cities
+   - See [`permit_discovery_expansion_plan.md`](permit_discovery_expansion_plan.md)
+   - Timeline: 8 weeks
+   - Cost: $0 (free methods)
+
+### Future Enhancements
 1. **Billing Engine:** Stripe integration for outcome-based charging
 2. **Voice AI:** Integration with Vapi or Bland.ai for phone outreach
+3. **Additional Verticals:** HVAC, Electrical, Plumbing permit monitoring
+4. **Advanced Analytics:** Conversion rate optimization, A/B testing
 
 

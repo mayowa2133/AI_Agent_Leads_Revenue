@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -10,6 +12,14 @@ logger = logging.getLogger(__name__)
 
 class ApolloError(RuntimeError):
     pass
+
+
+class ApolloRateLimitError(ApolloError):
+    """Apollo rate limit / credit exhaustion surfaced as 429 responses."""
+
+
+class ApolloAuthError(ApolloError):
+    """Apollo auth/plan error (401/402/403)."""
 
 
 @dataclass(frozen=True)
@@ -29,6 +39,7 @@ class ApolloCompany:
     revenue_estimate: str | None = None
     industry: str | None = None
     domain: str | None = None
+    apollo_id: str | None = None
 
 
 class ApolloClient:
@@ -58,6 +69,59 @@ class ApolloClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
+    async def _post_json(
+        self,
+        *,
+        url: str,
+        payload: dict,
+        retries: int = 2,
+        backoff_s: float = 1.0,
+    ) -> httpx.Response:
+        """
+        POST helper with basic retry/backoff for rate limiting and transient errors.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(retries + 1):
+            try:
+                resp = await self._client.post(url, json=payload, headers=self._headers)
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt >= retries:
+                    raise
+                await asyncio.sleep(min(backoff_s * (2**attempt), 10))
+                continue
+
+            if resp.status_code in (429, 500, 502, 503, 504):
+                if attempt >= retries:
+                    return resp
+                retry_after = resp.headers.get("Retry-After")
+                sleep_s = None
+                if retry_after:
+                    try:
+                        sleep_s = float(retry_after)
+                    except ValueError:
+                        sleep_s = None
+                if sleep_s is None:
+                    sleep_s = min(backoff_s * (2**attempt), 10)
+                await asyncio.sleep(sleep_s)
+                continue
+
+            return resp
+
+        if last_exc:
+            raise last_exc
+        raise ApolloError("Apollo request failed with unknown error")
+
+    @staticmethod
+    def _normalize_org_query(company_name: str) -> str:
+        """
+        Normalize organization name for Apollo search to reduce 422 errors.
+        """
+        cleaned = re.sub(r"[^\w\s&\-\.\']+", " ", company_name or "")
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        cleaned = cleaned.strip(" .,-")
+        return cleaned if cleaned else (company_name or "")
+
     async def find_decision_maker(
         self,
         *,
@@ -70,8 +134,9 @@ class ApolloClient:
         """
         Find likely decision makers at a company.
 
-        This uses a conservative, provider-agnostic request format; adapt the payload
-        mapping to your Apollo plan once you have the exact endpoint/fields.
+        Free-tier compatible implementation:
+        - Use organizations/search to get domain or org id
+        - Use mixed_people/organization_top_people to list top people
         """
         titles = titles or [
             "Facility Director",
@@ -82,38 +147,38 @@ class ApolloClient:
             "Chief Engineer",
         ]
 
-        # Provider-agnostic payload shape (adjust when wiring real Apollo endpoint)
-        payload = {
-            "q_organization_name": company_name,
-            "q_organization_domains": [company_domain] if company_domain else None,
-            "person_titles": titles,
-            "q_location": location,
-            "page": 1,
-            "per_page": max(1, min(limit, 25)),
-        }
+        # Resolve domain/org id via organizations/search if we only have a name.
+        resolved_domain = company_domain
+        resolved_org_id = None
+        if (company_name and not company_domain) or company_name:
+            org = await self.search_organization(company_name=company_name, location=location)
+            if org:
+                resolved_domain = resolved_domain or org.domain
+                resolved_org_id = org.apollo_id
 
-        # Remove Nones for cleaner requests.
-        payload = {k: v for k, v in payload.items() if v is not None}
+        people = await self.get_organization_top_people(
+            organization_id=resolved_org_id,
+            organization_domain=resolved_domain,
+            limit=limit,
+        )
 
-        url = f"{self.base_url}/mixed_people/search"
-        resp = await self._client.post(url, json=payload, headers=self._headers)
-        if resp.status_code >= 400:
-            raise ApolloError(f"Apollo error {resp.status_code}: {resp.text}")
-
-        data = resp.json()
-        people = data.get("people") or data.get("contacts") or []
-        out: list[ApolloPerson] = []
-        for p in people:
-            out.append(
-                ApolloPerson(
-                    full_name=p.get("name") or p.get("full_name"),
-                    title=p.get("title"),
-                    email=p.get("email"),
-                    phone=p.get("phone") or p.get("phone_numbers", [None])[0],
-                    linkedin_url=p.get("linkedin_url"),
+        # Filter by title keywords if provided (Apollo top people may include all roles).
+        if titles:
+            title_lowers = [t.lower() for t in titles]
+            people = [
+                p
+                for p in people
+                if p.title and any(t in p.title.lower() for t in title_lowers)
+            ]
+            if not people:
+                # Fall back to unfiltered top people if nothing matched.
+                people = await self.get_organization_top_people(
+                    organization_id=resolved_org_id,
+                    organization_domain=resolved_domain,
+                    limit=limit,
                 )
-            )
-            return out
+
+        return people[:limit]
 
     async def search_organization(
         self,
@@ -137,8 +202,9 @@ class ApolloClient:
         if not company_name:
             return None
 
+        normalized_name = self._normalize_org_query(company_name)
         payload = {
-            "q_organization_name": company_name,
+            "q_organization_name": normalized_name,
             "page": 1,
             "per_page": 1,
         }
@@ -147,10 +213,14 @@ class ApolloClient:
             payload["q_location"] = location
 
         url = f"{self.base_url}/organizations/search"
-        resp = await self._client.post(url, json=payload, headers=self._headers)
+        resp = await self._post_json(url=url, payload=payload)
 
+        if resp.status_code in (401, 402, 403):
+            raise ApolloAuthError(f"Apollo auth/plan error {resp.status_code}: {resp.text}")
+        if resp.status_code == 429:
+            raise ApolloRateLimitError(f"Apollo rate limited (429): {resp.text}")
         if resp.status_code >= 400:
-            # If search fails, return None (not an error)
+            # If search fails (e.g., 422), return None (not an error)
             logger.debug(f"Organization search returned {resp.status_code}: {resp.text}")
             return None
 
@@ -186,6 +256,7 @@ class ApolloClient:
             revenue_estimate=org.get("estimated_annual_revenue"),
             industry=org.get("industry") or org.get("industry_tag_id"),
             domain=domain,
+            apollo_id=org.get("id"),
         )
 
     async def get_organization_top_people(
@@ -223,7 +294,21 @@ class ApolloClient:
             payload["organization_domain"] = organization_domain
 
         url = f"{self.base_url}/mixed_people/organization_top_people"
-        resp = await self._client.post(url, json=payload, headers=self._headers)
+        resp = await self._post_json(url=url, payload=payload)
+
+        if resp.status_code in (401, 402, 403):
+            raise ApolloAuthError(f"Apollo auth/plan error {resp.status_code}: {resp.text}")
+        if resp.status_code == 429:
+            raise ApolloRateLimitError(f"Apollo rate limited (429): {resp.text}")
+        if resp.status_code == 404:
+            logger.debug(
+                "organization_top_people not found, falling back to mixed_people/search"
+            )
+            return await self._get_people_via_search(
+                organization_id=organization_id,
+                organization_domain=organization_domain,
+                limit=limit,
+            )
 
         if resp.status_code >= 400:
             logger.debug(f"Organization top people returned {resp.status_code}: {resp.text}")
@@ -245,6 +330,59 @@ class ApolloClient:
                     title=p.get("title"),
                     email=email,  # May be None on free tier
                     phone=p.get("phone") or (p.get("phone_numbers", [None])[0] if p.get("phone_numbers") else None),
+                    linkedin_url=p.get("linkedin_url"),
+                )
+            )
+
+        return out
+
+    async def _get_people_via_search(
+        self,
+        *,
+        organization_id: str | None = None,
+        organization_domain: str | None = None,
+        limit: int = 5,
+    ) -> list[ApolloPerson]:
+        """
+        Fallback to mixed_people/search when organization_top_people is unavailable.
+        """
+        if not organization_id and not organization_domain:
+            return []
+
+        payload: dict = {
+            "page": 1,
+            "per_page": max(1, min(limit, 25)),
+        }
+        if organization_id:
+            payload["organization_ids"] = [organization_id]
+        if organization_domain:
+            payload["q_organization_domains"] = [organization_domain]
+
+        url = f"{self.base_url}/mixed_people/search"
+        resp = await self._post_json(url=url, payload=payload)
+        if resp.status_code in (401, 402, 403):
+            raise ApolloAuthError(f"Apollo auth/plan error {resp.status_code}: {resp.text}")
+        if resp.status_code == 429:
+            raise ApolloRateLimitError(f"Apollo rate limited (429): {resp.text}")
+        if resp.status_code >= 400:
+            logger.debug(f"People search returned {resp.status_code}: {resp.text}")
+            return []
+
+        data = resp.json()
+        people = data.get("people") or data.get("contacts") or []
+
+        out: list[ApolloPerson] = []
+        for p in people:
+            email = p.get("email")
+            if email and "[email hidden]" in email.lower():
+                email = None
+            out.append(
+                ApolloPerson(
+                    full_name=p.get("name") or p.get("full_name"),
+                    title=p.get("title"),
+                    email=email,
+                    phone=p.get("phone")
+                    or (p.get("phone_numbers", [None])[0] if p.get("phone_numbers") else None),
                     linkedin_url=p.get("linkedin_url"),
                 )
             )
@@ -276,40 +414,12 @@ class ApolloClient:
         if company_name:
             return await self.search_organization(company_name=company_name, location=location)
 
-        # Fallback to old method if only domain provided
+        # Fallback if only domain provided: no supported free-tier endpoint for domain-only lookup.
         if not company_domain:
             return None
 
-        payload = {
-            "q_organization_domains": [company_domain],
-            "page": 1,
-            "per_page": 1,
-        }
-
-        if location:
-            payload["q_location"] = location
-
-        url = f"{self.base_url}/mixed_people/search"
-        resp = await self._client.post(url, json=payload, headers=self._headers)
-
-        if resp.status_code >= 400:
-            logger.debug(f"Company search returned {resp.status_code}: {resp.text}")
-            return None
-
-        data = resp.json()
-        organizations = data.get("organizations") or data.get("companies") or []
-        if not organizations:
-            return None
-
-        org = organizations[0]
-        return ApolloCompany(
-            name=org.get("name") or company_name or "",
-            website=org.get("website_url") or org.get("website"),
-            employee_count=org.get("estimated_num_employees"),
-            revenue_estimate=org.get("estimated_annual_revenue"),
-            industry=org.get("industry") or org.get("industry_tag_id"),
-            domain=org.get("primary_domain") or company_domain,
-        )
+        logger.debug("Apollo free tier does not support domain-only company lookup")
+        return None
 
     async def find_decision_makers_enhanced(
         self,
@@ -348,31 +458,19 @@ class ApolloClient:
 
         all_results: list[ApolloPerson] = []
 
-        # Strategy 1: Search by company name + location + titles
-        if company_name:
+        # Strategy 1: Use organization top people (free tier) with filters
+        if company_name or company_domain:
             try:
                 results = await self.find_decision_maker(
                     company_name=company_name,
+                    company_domain=company_domain,
                     titles=titles,
                     location=location,
                     limit=limit * 2,  # Get more for ranking
                 )
                 all_results.extend(results)
             except Exception as e:
-                logger.debug(f"Strategy 1 (company name) failed: {e}")
-
-        # Strategy 2: Search by domain + titles (if domain available)
-        if company_domain and company_domain not in [r.email.split("@")[-1] if r.email else None for r in all_results]:
-            try:
-                results = await self.find_decision_maker(
-                    company_domain=company_domain,
-                    titles=titles,
-                    location=location,
-                    limit=limit * 2,
-                )
-                all_results.extend(results)
-            except Exception as e:
-                logger.debug(f"Strategy 2 (domain) failed: {e}")
+                logger.debug(f"Strategy 1 (org top people) failed: {e}")
 
         # Deduplicate by email (if available) or name
         seen = set()

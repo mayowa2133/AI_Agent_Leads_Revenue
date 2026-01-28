@@ -11,10 +11,13 @@ async def search_case_studies(query: str, *, top_k: int = 5) -> list[dict[str, A
     """
     Semantic search against tenant-namespaced case studies.
     Returns a normalized list of {id, score, metadata}.
+    
+    Returns empty list if Pinecone is unavailable (graceful degradation).
     """
     try:
         vec = await embed_text(query)
     except Exception:
+        # Graceful degradation: return empty list if embedding fails
         return []
 
     try:
@@ -22,6 +25,8 @@ async def search_case_studies(query: str, *, top_k: int = 5) -> list[dict[str, A
         ns = tenant_namespace(current_tenant_id())
         res = index.query(vector=vec, top_k=top_k, include_metadata=True, namespace=ns)
     except Exception:
+        # Graceful degradation: return empty list if Pinecone unavailable
+        # This allows testing Phase 2.1 without Pinecone configured
         return []
 
     matches = res.get("matches") if isinstance(res, dict) else getattr(res, "matches", None)

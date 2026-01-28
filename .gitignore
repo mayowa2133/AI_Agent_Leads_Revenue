@@ -148,6 +148,11 @@ cython_debug/
 *.sqlite
 *.sqlite3
 
+# Local runtime artifacts (do not commit)
+data/
+debug_*.png
+debug_*.html
+
 # Playwright
 .playwright/
 

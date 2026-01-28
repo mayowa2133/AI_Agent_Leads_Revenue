@@ -65,19 +65,116 @@ class PlaywrightPermitScraper(BaseScraper):
         Returns:
             Applicant name if found, None otherwise
         """
-        if not detail_url or not self.selectors.applicant_selector:
+        if not detail_url:
             return None
-        
+
         try:
-            await page.goto(detail_url, wait_until="networkidle", timeout=10000)
-            await page.wait_for_timeout(1000)  # Wait for page to render
-            
-            # Try the configured selector
-            applicant_elem = await page.query_selector(self.selectors.applicant_selector)
-            if applicant_elem:
-                applicant_text = (await applicant_elem.inner_text()).strip()
-                if applicant_text:
-                    return applicant_text
+            # If we're already on a detail page or the URL is a JavaScript postback,
+            # don't navigate again.
+            current_url = page.url
+            is_detail_page = "CapDetail.aspx" in current_url or "Detail" in current_url
+            if not is_detail_page and not detail_url.startswith("javascript:"):
+                await page.goto(detail_url, wait_until="networkidle", timeout=10000)
+                await page.wait_for_timeout(1000)  # Wait for page to render
+            else:
+                await page.wait_for_timeout(1000)
+
+            # Try the configured selector first
+            if self.selectors and self.selectors.applicant_selector:
+                applicant_elem = await page.query_selector(self.selectors.applicant_selector)
+                if applicant_elem:
+                    applicant_text = (await applicant_elem.inner_text()).strip()
+                    if applicant_text and not self._is_label_text(applicant_text):
+                        return applicant_text
+
+            # Strategy 0: XPath following-sibling axis for label/value pairs
+            try:
+                xpath_result = await page.evaluate(
+                    """
+                    () => {
+                        const result = document.evaluate(
+                            "//label[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'applicant') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'contractor') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'owner') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'company name')]/following-sibling::*[1][self::span or self::div or self::input or self::textarea]",
+                            document,
+                            null,
+                            XPathResult.FIRST_ORDERED_NODE_TYPE,
+                            null
+                        );
+                        const element = result.singleNodeValue;
+                        if (element) {
+                            if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
+                                const value = element.value;
+                                if (value && value.trim().length > 2 && value.trim().length < 200) {
+                                    return { type: 'value', text: value.trim() };
+                                }
+                            }
+                            const text = element.textContent || element.innerText;
+                            if (text && text.trim().length > 2 && text.trim().length < 200) {
+                                return { type: 'text', text: text.trim() };
+                            }
+                        }
+                        const tdResult = document.evaluate(
+                            "//td[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'applicant') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'contractor') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'owner') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'company name')]/following-sibling::td[1]",
+                            document,
+                            null,
+                            XPathResult.FIRST_ORDERED_NODE_TYPE,
+                            null
+                        );
+                        const tdElement = tdResult.singleNodeValue;
+                        if (tdElement) {
+                            const text = tdElement.textContent || tdElement.innerText;
+                            if (text && text.trim().length > 2 && text.trim().length < 200) {
+                                return { type: 'text', text: text.trim() };
+                            }
+                        }
+                        return null;
+                    }
+                    """
+                )
+                if xpath_result and xpath_result.get("text"):
+                    candidate = xpath_result["text"].strip()
+                    if candidate and len(candidate) > 2 and len(candidate) < 200:
+                        if candidate.lower() not in [
+                            "applicant",
+                            "contractor",
+                            "owner",
+                            "applicant:",
+                            "contractor:",
+                            "owner:",
+                            "n/a",
+                            "none",
+                        ]:
+                            return candidate
+            except Exception:
+                pass
+
+            # Strategy 1: Table row label/value pairs
+            try:
+                table_result = await page.evaluate(
+                    """
+                    () => {
+                        const rows = document.querySelectorAll('tr');
+                        for (const row of rows) {
+                            const cells = row.querySelectorAll('th, td');
+                            if (cells.length >= 2) {
+                                const labelText = (cells[0].textContent || '').trim().toLowerCase();
+                                if (labelText.includes('applicant') || labelText.includes('contractor') || labelText.includes('owner')) {
+                                    const valueText = (cells[1].textContent || '').trim();
+                                    if (valueText && valueText.length > 2 && valueText.length < 200) {
+                                        return { type: 'text', text: valueText };
+                                    }
+                                }
+                            }
+                        }
+                        return null;
+                    }
+                    """
+                )
+                if table_result and table_result.get("text"):
+                    candidate = table_result["text"].strip()
+                    if candidate and not self._is_label_text(candidate):
+                        return candidate
+            except Exception:
+                pass
             
             # Fallback: Try common patterns for applicant/contractor fields
             # First try ID/name-based selectors
@@ -132,6 +229,178 @@ class PlaywrightPermitScraper(BaseScraper):
             print(f"Warning: Could not extract applicant from {detail_url}: {e}")
         
         return None
+
+    async def _extract_address_from_detail(
+        self,
+        page,
+        detail_url: str,
+    ) -> str | None:
+        """
+        Extract address/location from permit detail page.
+        """
+        if not detail_url:
+            return None
+
+        try:
+            current_url = page.url
+            is_detail_page = "CapDetail.aspx" in current_url or "Detail" in current_url
+            if not is_detail_page and not detail_url.startswith("javascript:"):
+                await page.goto(detail_url, wait_until="networkidle", timeout=10000)
+                await page.wait_for_timeout(1000)
+            else:
+                await page.wait_for_timeout(1000)
+
+            # Strategy 0: XPath following-sibling axis for label/value pairs
+            try:
+                xpath_result = await page.evaluate(
+                    """
+                    () => {
+                        const result = document.evaluate(
+                            "//label[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'address') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'location')]/following-sibling::*[1][self::span or self::div or self::input or self::textarea]",
+                            document,
+                            null,
+                            XPathResult.FIRST_ORDERED_NODE_TYPE,
+                            null
+                        );
+                        const element = result.singleNodeValue;
+                        if (element) {
+                            if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
+                                const value = element.value;
+                                if (value && value.trim().length > 5 && value.trim().length < 500) {
+                                    return { type: 'value', text: value.trim() };
+                                }
+                            }
+                            const text = element.textContent || element.innerText;
+                            if (text && text.trim().length > 5 && text.trim().length < 500) {
+                                return { type: 'text', text: text.trim() };
+                            }
+                        }
+                        const tdResult = document.evaluate(
+                            "//td[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'address') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'location')]/following-sibling::td[1]",
+                            document,
+                            null,
+                            XPathResult.FIRST_ORDERED_NODE_TYPE,
+                            null
+                        );
+                        const tdElement = tdResult.singleNodeValue;
+                        if (tdElement) {
+                            const text = tdElement.textContent || tdElement.innerText;
+                            if (text && text.trim().length > 5 && text.trim().length < 500) {
+                                return { type: 'text', text: text.trim() };
+                            }
+                        }
+                        return null;
+                    }
+                    """
+                )
+                if xpath_result and xpath_result.get("text"):
+                    candidate = xpath_result["text"].strip()
+                    if candidate and not self._is_label_text(candidate):
+                        return candidate
+            except Exception:
+                pass
+
+            # Strategy 1: ID/name-based selectors
+            id_selectors = [
+                '[id*="address" i]',
+                '[id*="location" i]',
+                '[name*="address" i]',
+                '[name*="location" i]',
+            ]
+            for selector in id_selectors:
+                try:
+                    elem = await page.query_selector(selector)
+                    if elem:
+                        text = (await elem.inner_text()).strip()
+                        if text and len(text) > 5 and len(text) < 500 and not self._is_label_text(text):
+                            return text
+                except Exception:
+                    continue
+
+            # Strategy 2: Label-based extraction
+            try:
+                labels = await page.query_selector_all("label")
+                for label in labels:
+                    label_text = (await label.inner_text()).strip().lower()
+                    if "address" in label_text or "location" in label_text:
+                        label_for = await label.get_attribute("for")
+                        if label_for:
+                            associated = await page.query_selector(f"#{label_for}")
+                            if associated:
+                                text = (await associated.inner_text()).strip()
+                                if text and len(text) > 5 and len(text) < 500 and not self._is_label_text(text):
+                                    return text
+                        parent = await label.evaluate_handle("el => el.parentElement")
+                        if parent:
+                            siblings = await parent.query_selector_all("*")
+                            for sibling in siblings:
+                                if sibling != label:
+                                    text = (await sibling.inner_text()).strip()
+                                    if text and len(text) > 5 and len(text) < 500 and not self._is_label_text(text):
+                                        return text
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"Warning: Could not extract address from {detail_url}: {e}")
+
+        return None
+
+    def _is_label_text(self, text: str) -> bool:
+        """
+        Heuristic to detect label/header text instead of real values.
+        """
+        if not text:
+            return True
+
+        text = text.strip()
+        text_lower = text.lower()
+
+        # Common label keywords
+        label_keywords = [
+            "applicant",
+            "contractor",
+            "owner",
+            "address",
+            "location",
+            "status",
+            "type",
+            "information",
+            "details",
+        ]
+        if text_lower.endswith(":") and any(keyword in text_lower for keyword in label_keywords):
+            return True
+
+        # All-caps headers are often labels, but allow valid all-caps addresses
+        if text.isupper() and len(text) > 20:
+            if not (
+                any(char.isdigit() for char in text)
+                and any(
+                    word in text_lower
+                    for word in [
+                        "st",
+                        "street",
+                        "ave",
+                        "avenue",
+                        "rd",
+                        "road",
+                        "dr",
+                        "drive",
+                        "blvd",
+                        "boulevard",
+                        "ln",
+                        "lane",
+                        "way",
+                        "court",
+                        "ct",
+                    ]
+                )
+            ):
+                return True
+
+        if len(text) < 50 and "information" in text_lower:
+            return True
+
+        return False
 
     async def scrape(self) -> list[PermitData]:
         return await self._with_retries(self._scrape_full)

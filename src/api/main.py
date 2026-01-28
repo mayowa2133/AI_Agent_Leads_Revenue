@@ -10,11 +10,13 @@ def create_app() -> FastAPI:
     init_observability()
 
     from src.api.routes.agents import router as agents_router
+    from src.api.routes.demo import router as demo_router
     from src.api.routes.leads import router as leads_router
     from src.api.routes.webhooks import router as webhooks_router
 
     app.include_router(leads_router, prefix="/leads", tags=["leads"])
     app.include_router(agents_router, prefix="/agents", tags=["agents"])
+    app.include_router(demo_router, tags=["demo"])
     app.include_router(webhooks_router, prefix="/webhooks", tags=["webhooks"])
 
     @app.get("/healthz")

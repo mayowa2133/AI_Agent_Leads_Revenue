@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 
@@ -25,6 +26,21 @@ class HunterEmailResult:
     first_name: str | None = None
     last_name: str | None = None
     domain: str | None = None
+
+
+@dataclass(frozen=True)
+class HunterEmailRecord:
+    email: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    position: str | None = None
+    confidence: int | None = None
+
+
+@dataclass(frozen=True)
+class HunterDomainSearchResult:
+    pattern: str | None = None
+    emails: list[HunterEmailRecord] | None = None
 
 
 class MockHunterClient:
@@ -139,6 +155,49 @@ class HunterClient:
         """Close HTTP client."""
         await self._client.aclose()
 
+    async def _get_json(
+        self,
+        *,
+        url: str,
+        params: dict,
+        retries: int = 2,
+        backoff_s: float = 1.0,
+    ) -> httpx.Response:
+        """
+        GET helper with basic retry/backoff for rate limiting and transient errors.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(retries + 1):
+            try:
+                resp = await self._client.get(url, params=params)
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt >= retries:
+                    raise
+                await asyncio.sleep(min(backoff_s * (2**attempt), 10))
+                continue
+
+            if resp.status_code in (429, 500, 502, 503, 504):
+                if attempt >= retries:
+                    return resp
+                retry_after = resp.headers.get("Retry-After")
+                sleep_s = None
+                if retry_after:
+                    try:
+                        sleep_s = float(retry_after)
+                    except ValueError:
+                        sleep_s = None
+                if sleep_s is None:
+                    sleep_s = min(backoff_s * (2**attempt), 10)
+                await asyncio.sleep(sleep_s)
+                continue
+
+            return resp
+
+        if last_exc:
+            raise last_exc
+        raise HunterError("Hunter request failed with unknown error")
+
     async def find_email(
         self,
         *,
@@ -197,7 +256,7 @@ class HunterClient:
             return None
 
         try:
-            resp = await self._client.get(url, params=params)
+            resp = await self._get_json(url=url, params=params)
 
             # 404 = no email found, doesn't cost a credit
             if resp.status_code == 404:
@@ -232,3 +291,52 @@ class HunterClient:
         except httpx.HTTPError as e:
             raise HunterError(f"HTTP error during Hunter.io call: {e}") from e
 
+    async def domain_search(
+        self,
+        *,
+        domain: str,
+        limit: int = 10,
+    ) -> HunterDomainSearchResult | None:
+        """
+        Fetch email pattern and known emails for a domain.
+        """
+        if not domain:
+            return None
+
+        url = f"{self.base_url}/domain-search"
+        params = {
+            "api_key": self.api_key,
+            "domain": domain,
+            "limit": max(1, min(limit, 50)),
+        }
+
+        if self.dry_run:
+            logger.info(f"[DRY RUN] Would call Hunter.io domain-search: {domain}")
+            return None
+        try:
+            resp = await self._get_json(url=url, params=params)
+
+            if resp.status_code == 404:
+                return None
+            if resp.status_code >= 400:
+                raise HunterError(f"Hunter.io error {resp.status_code}: {resp.text}")
+
+            data = resp.json().get("data", {})
+            pattern = data.get("pattern")
+            emails_raw = data.get("emails", []) or []
+            emails: list[HunterEmailRecord] = []
+            for entry in emails_raw:
+                emails.append(
+                    HunterEmailRecord(
+                        email=entry.get("value"),
+                        first_name=entry.get("first_name"),
+                        last_name=entry.get("last_name"),
+                        position=entry.get("position"),
+                        confidence=entry.get("confidence"),
+                    )
+                )
+
+            return HunterDomainSearchResult(pattern=pattern, emails=emails)
+
+        except httpx.HTTPError as e:
+            raise HunterError(f"HTTP error during Hunter.io call: {e}") from e

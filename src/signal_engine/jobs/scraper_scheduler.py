@@ -10,10 +10,12 @@ from typing import TYPE_CHECKING
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from src.core.config import get_settings
 from src.signal_engine.enrichment.company_enricher import EnrichmentInputs, enrich_permit_to_lead
+from src.signal_engine.api.unified_ingestion import PermitSource, PermitSourceType, UnifiedPermitIngestion
 from src.signal_engine.listeners.base_listener import BaseRegulatoryListener
 from src.signal_engine.scrapers.base_scraper import BaseScraper
 from src.signal_engine.scrapers.permit_scraper import (
@@ -127,24 +129,51 @@ class ScraperScheduler:
                 permits = await scraper.scrape()
                 logger.info(f"Scraper {scraper_name} extracted {len(permits)} permits (full scrape)")
 
-            # Enrich permits if enabled (with automatic slicing for credit safety)
+            # Enrich permits if enabled (with quality filtering and credit safety)
             enriched_leads = []
             if permits and self.settings.enable_enrichment:
-                # Automatically slice permits to credit limit for safety
-                # This prevents accidentally processing 500+ permits and draining credits
-                max_permits = self.settings.max_credits_per_run
-                permits_to_enrich = permits[:max_permits]
+                # Step 1: Quality filtering (filter low-quality permits before enrichment)
+                from src.signal_engine.quality.quality_filter import QualityFilter
                 
-                if len(permits) > max_permits:
+                quality_filter = QualityFilter(
+                    threshold=0.3,  # Lower threshold for real-world data (0.3 instead of 0.5)
+                    validate_addresses=False,  # Fast sync filtering
+                )
+                
+                quality_permits, filtered_permits, filter_stats = (
+                    quality_filter.filter_permits_sync(permits)
+                )
+                
+                logger.info(
+                    f"Quality filter: {filter_stats['passed']}/{filter_stats['total']} permits passed "
+                    f"({filter_stats['passed']/filter_stats['total']*100:.1f}%)"
+                )
+                logger.info(
+                    f"Score distribution: {filter_stats['score_distribution']}"
+                )
+                
+                if not quality_permits:
                     logger.warning(
-                        f"Credit safety: Only enriching first {max_permits} of {len(permits)} permits "
-                        f"(max_credits_per_run={max_permits}). "
-                        f"Remaining permits will be processed in subsequent runs."
+                        "No permits passed quality filter - skipping enrichment"
                     )
                 else:
-                    logger.info(f"Enriching {len(permits_to_enrich)} permits...")
-                
-                enriched_leads = await self._enrich_permits(permits_to_enrich, tenant_id)
+                    # Step 2: Apply credit limit to quality permits
+                    max_permits = self.settings.max_credits_per_run
+                    permits_to_enrich = quality_permits[:max_permits]
+                    
+                    if len(quality_permits) > max_permits:
+                        logger.warning(
+                            f"Credit safety: Only enriching first {max_permits} of {len(quality_permits)} "
+                            f"quality permits (max_credits_per_run={max_permits}). "
+                            f"Remaining permits will be processed in subsequent runs."
+                        )
+                    else:
+                        logger.info(
+                            f"Enriching {len(permits_to_enrich)} quality permits "
+                            f"(filtered from {len(permits)} total permits)..."
+                        )
+                    
+                    enriched_leads = await self._enrich_permits(permits_to_enrich, tenant_id)
                 
                 # Store enriched leads
                 if enriched_leads:
@@ -169,6 +198,86 @@ class ScraperScheduler:
         except Exception as e:
             logger.error(f"Error running scraper {scraper_name}: {e}", exc_info=True)
             # Don't update last_run on error - will retry from same point
+
+    async def run_api_job(
+        self,
+        source_name: str,
+        source: PermitSource,
+        tenant_id: str,
+        *,
+        days_back: int = 30,
+        limit: int = 1000,
+        enrich: bool = True,
+    ) -> None:
+        """
+        Execute a single API ingestion job.
+
+        Args:
+            source_name: Human-readable name for logging
+            source: PermitSource configuration
+            tenant_id: Tenant identifier
+            days_back: Number of days to look back
+            limit: Maximum permits to fetch
+        """
+        logger.info(f"Starting API ingestion job: {source_name} (tenant: {tenant_id})")
+        start_time = datetime.now(tz=timezone.utc)
+
+        try:
+            ingestion = UnifiedPermitIngestion()
+            permits = await ingestion.ingest_permits(
+                source, days_back=days_back, limit=limit
+            )
+            logger.info(
+                f"API source {source_name} fetched {len(permits)} permits"
+            )
+
+            # Enrich permits if enabled (reuse same pipeline)
+            enriched_leads = []
+            if permits and self.settings.enable_enrichment and enrich:
+                from src.signal_engine.quality.quality_filter import QualityFilter
+
+                quality_filter = QualityFilter(
+                    threshold=0.3,
+                    validate_addresses=False,
+                )
+
+                quality_permits, _, filter_stats = (
+                    quality_filter.filter_permits_sync(permits)
+                )
+                logger.info(
+                    f"Quality filter: {filter_stats['passed']}/{filter_stats['total']} permits passed "
+                    f"({filter_stats['passed']/filter_stats['total']*100:.1f}%)"
+                )
+
+                if quality_permits:
+                    max_permits = self.settings.max_credits_per_run
+                    permits_to_enrich = quality_permits[:max_permits]
+                    enriched_leads = await self._enrich_permits(
+                        permits_to_enrich, tenant_id
+                    )
+
+                if enriched_leads:
+                    self.lead_storage.save_leads(enriched_leads)
+                    logger.info(
+                        f"Enriched and stored {len(enriched_leads)} leads from {len(permits)} permits"
+                    )
+                else:
+                    logger.warning("No leads were enriched (enrichment may have failed)")
+            elif permits and not enrich:
+                logger.info(
+                    f"Enrichment disabled for API job {source_name} - skipping enrichment for {len(permits)} permits"
+                )
+
+            if permits:
+                logger.info(f"Sample permit IDs: {[p.permit_id for p in permits[:5]]}")
+
+            self._save_last_run(source_name, tenant_id, start_time)
+            logger.info(
+                f"Completed API ingestion job: {source_name} in "
+                f"{datetime.now(tz=timezone.utc) - start_time}"
+            )
+        except Exception as e:
+            logger.error(f"Error running API ingestion {source_name}: {e}", exc_info=True)
 
     async def _enrich_permits(
         self, permits: list, tenant_id: str
@@ -321,6 +430,48 @@ class ScraperScheduler:
             f"Added scraper job: {scraper_name} (tenant: {tenant_id}, schedule: {schedule_type})"
         )
 
+    def add_api_job(
+        self,
+        source_name: str,
+        source: PermitSource,
+        tenant_id: str,
+        *,
+        schedule_type: str = "interval",
+        hours: int = 24,
+        cron_expr: str | None = None,
+        run_date: datetime | None = None,
+        days_back: int = 30,
+        limit: int = 1000,
+        enrich: bool = True,
+    ) -> None:
+        """
+        Add an API ingestion job to the schedule.
+        """
+        if schedule_type == "interval":
+            trigger = IntervalTrigger(hours=hours)
+        elif schedule_type == "cron":
+            if cron_expr is None:
+                raise ValueError("cron_expr required for cron schedule")
+            trigger = CronTrigger.from_crontab(cron_expr)
+        elif schedule_type == "date":
+            if run_date is None:
+                raise ValueError("run_date required for date schedule")
+            trigger = DateTrigger(run_date=run_date)
+        else:
+            raise ValueError(f"Unknown schedule_type: {schedule_type}")
+
+        self.scheduler.add_job(
+            self.run_api_job,
+            trigger=trigger,
+            args=[source_name, source, tenant_id],
+            kwargs={"days_back": days_back, "limit": limit, "enrich": enrich},
+            id=f"{source_name}:{tenant_id}",
+            replace_existing=True,
+        )
+        logger.info(
+            f"Added API ingestion job: {source_name} (tenant: {tenant_id}, schedule: {schedule_type})"
+        )
+
     def start(self) -> None:
         """Start the scheduler."""
         self.scheduler.start()
@@ -374,6 +525,65 @@ async def run_scheduled_scrapers() -> None:
             tenant_id,
             schedule_type="interval",
             hours=12,  # Twice daily
+        )
+
+        # San Antonio Building Permits (CKAN Open Data)
+        san_antonio_ckan_source = PermitSource(
+            source_type=PermitSourceType.CKAN_API,
+            city="San Antonio",
+            source_id="san_antonio_building_permits_ckan",
+            config={
+                "portal_url": "https://data.sanantonio.gov",
+                # Current, actively updated dataset
+                "resource_id": "c21106f9-3ef5-4f3a-8604-f992b4db7512",
+                "field_mapping": {
+                    "permit_id": "PERMIT #",
+                    "permit_type": "PERMIT TYPE",
+                    "address": "ADDRESS",
+                    "status": "PERMIT TYPE",
+                    "applicant_name": "PRIMARY CONTACT",
+                    "issued_date": "DATE ISSUED",
+                },
+            },
+        )
+        scheduler.add_api_job(
+            "san_antonio_building_ckan_daily",
+            san_antonio_ckan_source,
+            tenant_id,
+            schedule_type="interval",
+            hours=24,
+            days_back=30,  # Current daily permits
+            limit=1000,
+            enrich=True,
+        )
+
+        # San Antonio Building Permits backfill (2020-2024) - one-time job
+        san_antonio_ckan_backfill_source = PermitSource(
+            source_type=PermitSourceType.CKAN_API,
+            city="San Antonio",
+            source_id="san_antonio_building_permits_ckan_backfill",
+            config={
+                "portal_url": "https://data.sanantonio.gov",
+                "resource_id": "c22b1ef2-dcf8-4d77-be1a-ee3638092aab",
+                "field_mapping": {
+                    "permit_id": "PERMIT #",
+                    "permit_type": "PERMIT TYPE",
+                    "address": "ADDRESS",
+                    "status": "PERMIT TYPE",
+                    "applicant_name": "PRIMARY CONTACT",
+                    "issued_date": "DATE ISSUED",
+                },
+            },
+        )
+        scheduler.add_api_job(
+            "san_antonio_building_ckan_backfill",
+            san_antonio_ckan_backfill_source,
+            tenant_id,
+            schedule_type="date",
+            run_date=datetime.now(tz=timezone.utc) + timedelta(seconds=10),
+            days_back=3650,  # Historical range
+            limit=5000,
+            enrich=True,
         )
 
         # Regulatory listeners

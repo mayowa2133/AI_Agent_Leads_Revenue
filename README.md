@@ -251,6 +251,36 @@ SERVICETITAN_CLIENT_SECRET=your_secret
 SERVICETITAN_APP_KEY=your_app_key
 SERVICETITAN_BASE_URL=https://api.servicetitan.com
 SERVICETITAN_TENANT_ID=your_tenant_id
+
+# Enrichment defaults (production-safe)
+APOLLO_ENABLED=false
+SKIP_KNOWN_COMPANY_TEST=true
+ENRICHMENT_PERSIST_CACHE=true
+ENRICHMENT_CACHE_PATH=data/enrichment_cache.json
+ENRICHMENT_BLOCKED_EMAIL_DOMAINS=
+ENRICHMENT_BLOCKED_EMAIL_TLDS=edu,gov,org
+ENRICHMENT_ALLOWED_EMAIL_TLDS_NO_DOMAIN=com,net,biz
+
+# Email sending (Phase 2)
+EMAIL_PROVIDER=smtp
+SMTP_HOST=localhost
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+EMAIL_FROM_ADDRESS=noreply@aoro.ai
+EMAIL_FROM_NAME=AORO
+EMAIL_SEND_DRY_RUN=true
+
+# Free CRM export (CSV)
+CRM_EXPORT_ENABLED=true
+CRM_EXPORT_CSV_PATH=data/booking_exports.csv
+CRM_EXPORT_DEDUPE_ENABLED=true
+
+# CRM Provider (Phase 3)
+CRM_PROVIDER=csv
+AIRTABLE_API_KEY=
+AIRTABLE_BASE_ID=
+AIRTABLE_TABLE_NAME=Bookings
 ```
 
 ## 💻 Usage
@@ -262,6 +292,23 @@ poetry run uvicorn src.api.main:app --reload --port 8000
 ```
 
 The API will be available at `http://localhost:8000` with interactive docs at `http://localhost:8000/docs`.
+
+### Simulate an inbound email reply (free webhook test)
+```bash
+# Start the API server first (default http://localhost:8000)
+poetry run python scripts/phase2/post_email_response.py \
+  --lead-id your-lead-id \
+  --from-email sender@example.com \
+  --to-email your_verified_sender@email.com \
+  --content "Yes, I'm interested. Can we talk next week?"
+
+# Or auto-pick the most recent outreach lead_id
+poetry run python scripts/phase2/post_email_response.py \
+  --latest \
+  --from-email sender@example.com \
+  --to-email your_verified_sender@email.com \
+  --content "Yes, I'm interested. Can we talk next week?"
+```
 
 ### Test Phase 1 Components
 
@@ -391,6 +438,10 @@ python scripts/utils/docs_gate.py --show-changes
 - **Status**: [`docs/ai/STATUS.md`](docs/ai/STATUS.md) - Current project status
 - **Changelog**: [`docs/ai/CHANGELOG.md`](docs/ai/CHANGELOG.md)
 - **Work Log**: [`docs/ai/WORKLOG.md`](docs/ai/WORKLOG.md)
+- **Phase 1.2 Plan**: [`docs/plan/phase_1.2_regulatory_listener.md`](docs/plan/phase_1.2_regulatory_listener.md)
+- **Phase 1.3 Plan**: [`docs/plan/phase_1.3_enrichment_pipeline.md`](docs/plan/phase_1.3_enrichment_pipeline.md)
+- **Phase 2 Plan**: [`docs/plan/phase_2_agentic_workflow.md`](docs/plan/phase_2_agentic_workflow.md) - Agentic workflow implementation plan
+- **Permit Discovery Expansion**: [`docs/plan/permit_discovery_expansion_plan.md`](docs/plan/permit_discovery_expansion_plan.md) - Free nationwide coverage strategy (50+ cities)
 - **Phase 1.3 Completion**: [`docs/ai/PHASE_1_3_COMPLETE.md`](docs/ai/PHASE_1_3_COMPLETE.md)
 - **Hybrid Enrichment Strategy**: [`docs/ai/HYBRID_ENRICHMENT_STRATEGY.md`](docs/ai/HYBRID_ENRICHMENT_STRATEGY.md)
 - **Architecture Decision Records**: [`docs/ai/adr/`](docs/ai/adr/)

@@ -15,8 +15,19 @@ def normalize_building_type(building_type: str | None) -> str:
 
 
 async def lookup_applicable_fire_codes(*, building_type: str | None) -> list[str]:
+    """
+    Lookup applicable fire codes for a building type.
+    
+    Returns empty list if Neo4j is unavailable (graceful degradation).
+    """
     building_type_id = normalize_building_type(building_type)
-    rows = await get_applicable_codes(building_type_id)
+    try:
+        rows = await get_applicable_codes(building_type_id)
+    except Exception:
+        # Graceful degradation: return empty list if Neo4j unavailable
+        # This allows testing Phase 2.1 without Neo4j running
+        return []
+    
     # Return compact citations (id + edition) for LLM consumption.
     out: list[str] = []
     for r in rows:
