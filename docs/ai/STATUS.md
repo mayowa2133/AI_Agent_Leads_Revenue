@@ -1,7 +1,7 @@
 # AORO MVP Implementation Status
 
-**Last Updated:** 2026-01-20  
-**Context:** Phase 2 (Agentic Workflow) - ✅ **100% COMPLETE** | Phase 1.4 (Permit Discovery Expansion) - ⏳ **PLANNED** | **Data Extraction Improvements** - ⚠️ **IN PROGRESS** - Accela detail extraction + CKAN daily permits + enrichment validation
+**Last Updated:** 2026-02-05  
+**Context:** Phase 2 (Agentic Workflow) - ✅ **100% COMPLETE** | Phase 1.4 (Permit Discovery Expansion) - ⏳ **PLANNED** | **Data Extraction Improvements** - ⚠️ **IN PROGRESS** - Accela detail extraction + CKAN daily permits + enrichment validation | Phase 3 (MCP Integration) - ⏳ **PENDING**
 
 ## 📋 Quick Status Summary
 
@@ -12,7 +12,7 @@
 **Phase 2 Completion: ✅ 100%**
 **Phase 3 Completion: ⏳ PENDING**
 
-## ✅ Recent Updates (2026-01-20)
+## ✅ Recent Updates (2026-02-05)
 
 - Enrichment domain sanity filter added (block TLDs/domains) to reduce mismatches.
 - Apollo auto-disabled by default; known-company test skipped by default.
@@ -26,6 +26,7 @@
 - CKAN e2e rerun after snippet-domain tightening (2026-01-20): Current 6 emails, Historical 5 emails; metrics persisted.
 - Phase 2 email sending now supports dry-run mode (`EMAIL_SEND_DRY_RUN=true`) for safe workflow testing.
 - Phase 2 e2e workflow test passed with dry-run email send and booking-ready response flow (2026-01-20).
+- Demo simulator UI available at `/demo` for running the LangGraph workflow with sample leads.
 - Phase 2 webhook now resumes workflows on reply (classify → book → CSV export) using free JSON storage.
 - Added free CSV export for booking payloads and lightweight workflow events in `data/workflow_metrics.json`.
 - CKAN enrichment re-run (2026-01-20): 5 emails found; Hunter credits used=4, Apollo credits used=0.
