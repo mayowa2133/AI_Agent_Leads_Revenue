@@ -8,10 +8,10 @@ AORO is an AI-powered revenue orchestration platform designed for compliance-dri
 
 - **Discovers** high-intent leads through permit scraping and regulatory monitoring ✅ **Phase 1 Complete**
 - **Enriches** lead data with company information and decision-maker identification ✅ **Phase 1 Complete**
-- **Researches** applicable fire codes and compliance requirements (Phase 2)
-- **Generates** technical, compliance-focused outreach messages (Phase 2)
-- **Handles** objections with regulatory context and case studies (Phase 2)
-- **Books** qualified appointments directly into ServiceTitan CRM (Phase 3)
+- **Researches** applicable fire codes and compliance requirements ✅ **Phase 2 Complete**
+- **Generates** technical, compliance-focused outreach messages ✅ **Phase 2 Complete**
+- **Handles** objections with regulatory context and case studies ✅ **Phase 2 Complete**
+- **Books** qualified appointments directly into ServiceTitan CRM (Phase 3 - Pending)
 
 ## ✨ Features
 
@@ -31,7 +31,7 @@ AORO is an AI-powered revenue orchestration platform designed for compliance-dri
   - Credit safety mechanisms ✅
 - **Regulatory Matching**: Correlate permits with regulatory updates ✅
 
-### Multi-Agent Workflow (LangGraph)
+### Multi-Agent Workflow (LangGraph) ✅ **Phase 2 Complete**
 - **Researcher Agent**: Identifies applicable fire codes, compliance gaps, and relevant case studies
 - **Communicator Agent**: Drafts technical, non-hype outreach messages
 - **Closer Agent**: Handles objections with regulatory context and proposes next steps
@@ -42,7 +42,7 @@ AORO is an AI-powered revenue orchestration platform designed for compliance-dri
 - **Pinecone Vector Store**: Semantic search for case studies and regulatory context
 - **Embeddings**: OpenAI-based embeddings for knowledge retrieval
 
-### Integrations
+### Integrations (Phase 3 - Pending)
 - **ServiceTitan CRM**: OAuth-authenticated API client for booking appointments
 - **MCP (Model Context Protocol)**: FastMCP server exposing CRM tools to agents
 - **Calendar Sync**: Integration with calendar systems for availability
@@ -293,6 +293,10 @@ poetry run uvicorn src.api.main:app --reload --port 8000
 
 The API will be available at `http://localhost:8000` with interactive docs at `http://localhost:8000/docs`.
 
+### Demo Simulator UI
+
+Start the API server, then open `http://localhost:8000/demo` to run the LangGraph demo UI. The demo uses sample leads and allows you to simulate responses without calling live integrations.
+
 ### Simulate an inbound email reply (free webhook test)
 ```bash
 # Start the API server first (default http://localhost:8000)
@@ -481,7 +485,7 @@ Built with:
 - [Pinecone](https://www.pinecone.io/) - Vector database
 - [Playwright](https://playwright.dev/) - Web automation
 
-## ✅ Phase 1 Status: Complete
+## ✅ Current Project Status
 
 **Phase 1.1: Permit Scraping** ✅
 - Mecklenburg County scraper (510+ permits extracted)
@@ -508,8 +512,22 @@ Built with:
 - Phase 1.2 → Phase 1.3: Working
 - Phase 1.1 → Phase 1.2 → Phase 1.3: Complete flow verified
 
+**Phase 2: Agentic Workflow** ✅
+- LangGraph workflow with research, outreach, response handling, follow-ups, objection management
+- Monitoring + workflow metrics persistence
+- Demo simulator UI (`/demo`) with simulated responses
+
+**Phase 1.4: Permit Discovery Expansion** ⏳ **Planned**
+- Expansion to 50+ municipalities (Accela, ViewPoint, EnerGov, Socrata, CKAN)
+
+**Data Extraction Improvements** ⚠️ **In Progress**
+- Accela detail page extraction, CKAN ingestion, enrichment validation
+
+**Phase 3: MCP Integration** ⏳ **Pending**
+- ServiceTitan CRM integration via MCP (server + client exist; needs live credentials/testing)
+
 ---
 
-**Status**: Phase 1 Complete - Ready for Phase 2 (Multi-Agent Workflow)
+**Status**: Phase 1 + Phase 2 Complete - Phase 1.4 planned, Phase 3 pending
 
 For questions or issues, please open an issue on GitHub.
